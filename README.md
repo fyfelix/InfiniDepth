@@ -94,7 +94,7 @@ python app.py
 | Metric Depth from RGB + Depth Sensor | `bash example_scripts/infer_depth/eth3d_infinidepth_depthsensor.sh` |
 | 3D Gaussian from RGB + Depth Sensor | `bash example_scripts/infer_gs/eth3d_infinidepth_depthsensor_gs.sh` |
 
-<details open>
+<details>
 <summary><strong> 1. Relative Depth from Single RGB Image</strong> (<code>inference_depth.py</code>)</summary>
 
 Use this when you want a relative depth map from a single RGB image and, optionally, a point cloud export.
