@@ -32,6 +32,11 @@ class ExampleCase:
     def has_depth(self) -> bool:
         return self.depth_path is not None
 
+    @property
+    def gallery_caption(self) -> str:
+        mode_label = "RGB + depth" if self.has_depth else "RGB only"
+        return f"{self.name} | {mode_label}"
+
 
 @dataclass(frozen=True)
 class DemoArtifacts:
