@@ -5,21 +5,21 @@
   InfiniDepth: Arbitrary-Resolution and Fine-Grained Depth Estimation with Neural Implicit Fields
 </h1>
 
-
-<p align="center">
+<div align="center">
   <a href="https://arxiv.org/abs/2601.03252">
-    <img src="https://img.shields.io/badge/arXiv-2601.03252-b31b1b.svg?style=for-the-badge" alt="arXiv">
-  </a>
-  <a href="https://zju3dv.github.io/InfiniDepth">
-    <img src="https://img.shields.io/badge/Project-Page-green.svg?style=for-the-badge" alt="Project Page">
+    <img src="https://img.shields.io/badge/arXiv-Paper-blue?logo=arxiv&logoColor=blue">
   </a>
   <a href="https://huggingface.co/spaces/ritianyu/InfiniDepth">
-    <img src="https://img.shields.io/badge/Hugging%20Face-Demo-blue.svg?style=for-the-badge" alt="Hugging Face Demo">
+    <img src="https://img.shields.io/badge/HuggingFace-Demo-yellow?logo=huggingface&logoColor=yellow">
   </a>
   <a href="https://huggingface.co/datasets/ritianyu/game_4k_data">
-    <img src="https://img.shields.io/badge/Hugging%20Face-Dataset-blue.svg?style=for-the-badge" alt="Synth4K Dataset">
+    <img src="https://img.shields.io/badge/HuggingFace-Dataset-orange?logo=huggingface&logoColor=orange">
   </a>
-
+  <a href="assets/wechat.jpg">
+    <img src="https://img.shields.io/badge/微信-WeChat-green?logo=wechat&logoColor=green">
+  </a>
+</div>
+  
 <p align="center">
   <a href="https://ritianyu.github.io/">Hao Yu*</a> •
   <a href="https://haotongl.github.io/">Haotong Lin*</a> •
@@ -45,15 +45,6 @@
 > **[2026-03]** 🎉 Inference code of InfiniDepth (RGB Only & Depth Sensor Augmentation) is available now!
 
 > **[2026-02]** 🎉 InfiniDepth has been accepted to CVPR 2026! Code coming soon!
-
-Join our **[Wechat](#)** group to discuss and find help from us.
-<p align="center">
-  <img src="assets/wechat.jpg" alt="WeChat QR Code" width="220"/>
-</p>
-
-<p align="center">
-  Scan the QR code to join our WeChat group.
-</p>
 
 
 ## ✨ What can InfiniDepth do?
