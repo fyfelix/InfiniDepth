@@ -94,6 +94,7 @@ python app.py
 | 3D Gaussian from Single RGB Image | `bash example_scripts/infer_gs/courtyard_infinidepth_gs.sh` |
 | Metric Depth from RGB + Depth Sensor | `bash example_scripts/infer_depth/eth3d_infinidepth_depthsensor.sh` |
 | 3D Gaussian from RGB + Depth Sensor | `bash example_scripts/infer_gs/eth3d_infinidepth_depthsensor_gs.sh` |
+| Multi-View / Video Depth + Global Point Cloud | `bash example_scripts/infer_depth/waymo_multi_view_infinidepth.sh` | 
 
 <details>
 <summary><strong> 1. Relative Depth from Single RGB Image</strong> (<code>inference_depth.py</code>)</summary>
@@ -288,19 +289,95 @@ bash example_scripts/infer_gs/waymo_infinidepth_depthsensor_gs.sh
 </details>
 
 <details>
-<summary><strong>4. Common Argument Conventions</strong></summary>
+<summary><strong>4. Multi-View / Video Depth + Global Point Cloud</strong> (<code>inference_multi_view_depth.py</code>)</summary>
+
+Use this when you want sequence-level depth inference from an RGB image folder or video, plus per-frame aligned point clouds and one merged global point cloud. The script runs DA3 once on the whole sequence, then aligns each InfiniDepth depth map to the corresponding DA3 depth map before export.
+
+**Required inputs**
+
+- `RGB image directory`, `single RGB image`, or `video`
+- `Sparse depth` directory / single file / depth video when `--model_type=InfiniDepth_DepthSensor`
+
+**Required checkpoints / dependencies**
+
+- `checkpoints/depth/infinidepth.ckpt` for RGB-only inference
+- `checkpoints/depth/infinidepth_depthsensor.ckpt` for RGB + depth sensor inference
+- `checkpoints/moge-2-vitl-normal/model.pt` recover metric scale for RGB-only frame inference
+- `depth-anything-3` installed in the current environment; default DA3 model is `depth-anything/DA3-LARGE-1.1`
+
+**Optional checkpoint**
+
+- `checkpoints/sky/skyseg.onnx` additional sky filtering
+
+**RGB-Only Multi-View / Video Command**
+
+```bash
+python inference_multi_view_depth.py \
+  --input_path=example_data/multi-view/waymo/image \
+  --model_type=InfiniDepth \
+  --depth_model_path=checkpoints/depth/infinidepth.ckpt \
+  --align_to_da3_depth=True
+```
+
+**RGB + Depth Sensor Multi-View / Video Command**
+
+```bash
+python inference_multi_view_depth.py \
+  --input_path=example_data/multi-view/waymo/image \
+  --input_depth_path=example_data/multi-view/waymo/depth \
+  --model_type=InfiniDepth_DepthSensor \
+  --depth_model_path=checkpoints/depth/infinidepth_depthsensor.ckpt \
+  --align_to_da3_depth=True
+```
+
+For video input, replace `--input_path` with a video file. When `--model_type=InfiniDepth_DepthSensor`, `--input_depth_path` can also be a depth video and must contain the same number of frames as the RGB input.
+
+**For the RGB-only example above, outputs are written to**
+
+- `example_data/multi-view/waymo/pred_sequence/image/frames/depth/` for aligned raw depth maps
+- `example_data/multi-view/waymo/pred_sequence/image/frames/depth_vis/` for colorized depth maps
+- `example_data/multi-view/waymo/pred_sequence/image/frames/pcd/` for per-frame aligned point clouds
+- `example_data/multi-view/waymo/pred_sequence/image/frames/meta/` for per-frame camera and alignment metadata
+- `example_data/multi-view/waymo/pred_sequence/image/da3/sequence_pose.npz` for cached DA3 predictions
+- `example_data/multi-view/waymo/pred_sequence/image/merged/sequence_merged.ply` for the merged global point cloud
+
+**Example scripts**
+
+```bash
+bash example_scripts/infer_depth/waymo_multi_view_infinidepth.sh
+bash example_scripts/infer_depth/waymo_multi_view_infinidepth_depthsensor.sh
+```
+
+**Most useful options**
+
+| Argument | What it controls |
+| --- | --- |
+| `--input_path` | RGB image directory, single image, or video path. |
+| `--input_depth_path` | Depth directory, single depth file, or depth video; required for `InfiniDepth_DepthSensor`. |
+| `--input_mode` | Force `images` or `video` instead of auto detection. |
+| `--align_to_da3_depth` | Align each InfiniDepth depth map to the corresponding DA3 depth map before export. |
+| `--save_frame_pcd` | Save one aligned point cloud per frame. |
+| `--save_merged_pcd` | Save the merged global point cloud across the whole sequence. |
+| `--da3_scale_align_conf_threshold` | Minimum DA3 confidence used during per-frame scale estimation. |
+| `--output_root` | Override the default `pred_sequence/<sequence_name>/` output directory. |
+
+</details>
+
+<details>
+<summary><strong>5. Common Argument Conventions</strong></summary>
 
 | Argument | Used in | Description |
 | --- | --- | --- |
 | `--input_image_path` | depth + gs | Path to the input RGB image. |
-| `--input_depth_path` | depth + gs | Optional metric depth prompt; required for `InfiniDepth_depthsensor`. |
-| `--model_type` | depth + gs | `InfiniDepth` for RGB-only, `InfiniDepth_depthsensor` for RGB + sparse depth. |
+| `--input_path` | multi-view | Path to an RGB image directory, single image, or video. |
+| `--input_depth_path` | depth + gs + multi-view | Optional metric depth prompt; required for `InfiniDepth_DepthSensor`. In multi-view mode this can be a depth directory, single depth file, or depth video. |
+| `--model_type` | depth + gs + multi-view | `InfiniDepth` for RGB-only, `InfiniDepth_DepthSensor` for RGB + sparse depth. |
 | `--depth_model_path` | depth + gs | Path to the depth checkpoint. |
 | `--gs_model_path` | gs only | Path to the gaussian predictor checkpoint. |
 | `--moge2_pretrained` | depth + gs | MoGe-2 checkpoint used when `--input_depth_path` is missing. |
 | `--fx_org --fy_org --cx_org --cy_org` | depth + gs | Camera intrinsics in original image resolution. Missing values fall back to MoGe-2 estimates or image-size defaults. |
 | `--input_size` | depth + gs | Network input size `(H,W)` used during inference. |
-| `--enable_skyseg_model` | depth + gs | Enable sky masking before depth or gaussian sampling. |
+| `--enable_skyseg_model` | depth + gs + multi-view | Enable sky masking before depth or gaussian sampling. |
 | `--sky_model_ckpt_path` | depth + gs | Path to the sky segmentation ONNX checkpoint. |
 
 **Depth output modes**
@@ -316,6 +393,7 @@ bash example_scripts/infer_gs/waymo_infinidepth_depthsensor_gs.sh
 | `inference_depth.py` depth images | `pred_depth/` next to your input data folder |
 | `inference_depth.py` point clouds | `pred_pcd/` next to your input data folder |
 | `inference_gs.py` gaussians and videos | `pred_gs/` next to your input data folder |
+| `inference_multi_view_depth.py` sequence outputs | `pred_sequence/<sequence_name>/` next to your input data folder |
 
 </details>
 

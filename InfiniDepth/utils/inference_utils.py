@@ -30,6 +30,21 @@ class DepthOutputPaths:
     pcd_path: str
 
 
+@dataclass
+class SequenceOutputPaths:
+    root_dir: str
+    frame_source_dir: str
+    frame_depth_dir: str
+    frame_depth_vis_dir: str
+    frame_pcd_dir: str
+    frame_meta_dir: str
+    da3_dir: str
+    merged_dir: str
+    manifest_path: str
+    da3_cache_path: str
+    merged_pcd_path: str
+
+
 def scale_intrinsics(fx, fy, cx, cy, org_h, org_w, h, w):
     sx, sy = w / float(org_w), h / float(org_h)
     return fx * sx, fy * sy, cx * sx, cy * sy
@@ -472,3 +487,100 @@ def resolve_ply_output_path(
     stem = os.path.splitext(os.path.basename(input_image_path))[0]
     ply_name = output_ply_name or f"{model_type}_{stem}_gaussians.ply"
     return ply_dir, os.path.join(ply_dir, ply_name)
+
+
+def resolve_sequence_output_paths(
+    input_path: str,
+    output_root: Optional[str] = None,
+) -> SequenceOutputPaths:
+    input_path_resolved = Path(input_path).resolve()
+    sequence_name = input_path_resolved.stem if input_path_resolved.is_file() else input_path_resolved.name
+
+    if output_root is None:
+        root_dir = input_path_resolved.parent / 'pred_sequence' / sequence_name
+    else:
+        root_dir = Path(output_root).expanduser().resolve()
+
+    frame_source_dir = root_dir / 'frames' / 'source'
+    frame_depth_dir = root_dir / 'frames' / 'depth'
+    frame_depth_vis_dir = root_dir / 'frames' / 'depth_vis'
+    frame_pcd_dir = root_dir / 'frames' / 'pcd'
+    frame_meta_dir = root_dir / 'frames' / 'meta'
+    da3_dir = root_dir / 'da3'
+    merged_dir = root_dir / 'merged'
+
+    for directory in (
+        frame_source_dir,
+        frame_depth_dir,
+        frame_depth_vis_dir,
+        frame_pcd_dir,
+        frame_meta_dir,
+        da3_dir,
+        merged_dir,
+    ):
+        os.makedirs(directory, exist_ok=True)
+
+    return SequenceOutputPaths(
+        root_dir=str(root_dir),
+        frame_source_dir=str(frame_source_dir),
+        frame_depth_dir=str(frame_depth_dir),
+        frame_depth_vis_dir=str(frame_depth_vis_dir),
+        frame_pcd_dir=str(frame_pcd_dir),
+        frame_meta_dir=str(frame_meta_dir),
+        da3_dir=str(da3_dir),
+        merged_dir=str(merged_dir),
+        manifest_path=str(root_dir / 'manifest.json'),
+        da3_cache_path=str(da3_dir / 'sequence_pose.npz'),
+        merged_pcd_path=str(merged_dir / 'sequence_merged.ply'),
+    )
+
+
+def ensure_homogeneous_extrinsics(extrinsics: np.ndarray) -> np.ndarray:
+    extrinsics_np = np.asarray(extrinsics, dtype=np.float32)
+    if extrinsics_np.ndim == 2:
+        extrinsics_np = extrinsics_np[None, ...]
+
+    if extrinsics_np.ndim != 3:
+        raise ValueError(f'extrinsics must have 2 or 3 dims, got {extrinsics_np.shape}')
+
+    if extrinsics_np.shape[-2:] == (4, 4):
+        return extrinsics_np
+    if extrinsics_np.shape[-2:] != (3, 4):
+        raise ValueError(f'extrinsics must have shape (...,3,4) or (...,4,4), got {extrinsics_np.shape}')
+
+    batch = extrinsics_np.shape[0]
+    homogeneous = np.tile(np.eye(4, dtype=np.float32)[None, ...], (batch, 1, 1))
+    homogeneous[:, :3, :] = extrinsics_np
+    return homogeneous
+
+
+def scale_intrinsics_matrix_np(
+    intrinsics: np.ndarray,
+    src_h: int,
+    src_w: int,
+    dst_h: int,
+    dst_w: int,
+) -> np.ndarray:
+    if src_h <= 0 or src_w <= 0 or dst_h <= 0 or dst_w <= 0:
+        raise ValueError(
+            f'Invalid source/destination size: src=({src_h}, {src_w}), dst=({dst_h}, {dst_w})'
+        )
+
+    intrinsics_np = np.asarray(intrinsics, dtype=np.float32)
+    if intrinsics_np.shape != (3, 3):
+        raise ValueError(f'intrinsics must have shape (3,3), got {intrinsics_np.shape}')
+
+    fx, fy, cx, cy = scale_intrinsics(
+        fx=float(intrinsics_np[0, 0]),
+        fy=float(intrinsics_np[1, 1]),
+        cx=float(intrinsics_np[0, 2]),
+        cy=float(intrinsics_np[1, 2]),
+        org_h=src_h,
+        org_w=src_w,
+        h=dst_h,
+        w=dst_w,
+    )
+    return np.array(
+        [[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]],
+        dtype=np.float32,
+    )

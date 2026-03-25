@@ -372,6 +372,13 @@ def plot_depth(image: torch.Tensor, depth: torch.Tensor, output_path: str) -> No
     imageio.imwrite(output_path, vis_img)
 
 
+def save_depth_array(depth: torch.Tensor | np.ndarray, output_path: str) -> None:
+    depth_np = depth.detach().cpu().numpy() if torch.is_tensor(depth) else np.asarray(depth)
+    depth_np = np.squeeze(depth_np).astype(np.float32)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    np.save(output_path, depth_np)
+
+
 def depth2pcd(
     sampled_coord,  
     sampled_depth,  
@@ -447,25 +454,66 @@ def save_sampled_point_clouds(
     cy,
     output_path,
     ixt=None,
+    extrinsics_w2c=None,
     filter_flying_points=True,
     nb_neighbors=30,
     std_ratio=2.0,
     **kwargs
 ):
+    if extrinsics_w2c is not None:
+        if "ext" in kwargs:
+            raise ValueError("Use either `extrinsics_w2c` or `ext`, but not both.")
+        kwargs["ext"] = extrinsics_w2c
     if ixt is None:
         try:
             ixt = np.array([[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]], dtype=np.float32)
         except Exception as e:
             raise ValueError("Either provide ixt or valid fx, fy, cx, cy to build it.") from e
     pcd = depth2pcd(sampled_coord, sampled_depth, rgb_image, ixt, **kwargs)
-    if filter_flying_points:
-        cl, ind = pcd.remove_statistical_outlier(nb_neighbors=nb_neighbors, std_ratio=std_ratio)
+    return save_point_cloud(
+        pcd,
+        output_path,
+        filter_flying_points=filter_flying_points,
+        nb_neighbors=nb_neighbors,
+        std_ratio=std_ratio,
+    )
+
+
+def save_point_cloud(
+    pcd: o3d.geometry.PointCloud,
+    output_path: str,
+    filter_flying_points: bool = True,
+    nb_neighbors: int = 30,
+    std_ratio: float = 2.0,
+) -> o3d.geometry.PointCloud:
+    if filter_flying_points and len(pcd.points) > 0:
+        _, ind = pcd.remove_statistical_outlier(nb_neighbors=nb_neighbors, std_ratio=std_ratio)
         pcd = pcd.select_by_index(ind)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     success = o3d.io.write_point_cloud(output_path, pcd)
     if success:
         Log.info(f"Save point cloud to {output_path}")
     else:
         Log.error(f"Failed to save point cloud to {output_path}")
+    return pcd
+
+
+def merge_point_clouds(
+    point_clouds: list[o3d.geometry.PointCloud],
+    filter_flying_points: bool = True,
+    nb_neighbors: int = 30,
+    std_ratio: float = 2.0,
+) -> o3d.geometry.PointCloud:
+    merged = o3d.geometry.PointCloud()
+    for pcd in point_clouds:
+        if pcd is None or len(pcd.points) == 0:
+            continue
+        merged += pcd
+
+    if filter_flying_points and len(merged.points) > 0:
+        _, ind = merged.remove_statistical_outlier(nb_neighbors=nb_neighbors, std_ratio=std_ratio)
+        merged = merged.select_by_index(ind)
+    return merged
 
 
 def filter_depth_noise(depth: torch.Tensor,
