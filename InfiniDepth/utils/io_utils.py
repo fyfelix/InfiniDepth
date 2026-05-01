@@ -22,14 +22,16 @@ def filter_depth_noise_numpy(depth: np.ndarray,
                               min_neighbors: int = 7,
                               bilateral_d: int = 5,
                               bilateral_sigma_color: float = 0.5,
-                              bilateral_sigma_space: float = 5.0) -> tuple:
+                              bilateral_sigma_space: float = 5.0,
+                              verbose: bool = True) -> tuple:
     depth_np = depth.copy()
     mask_np = depth_mask.astype(bool).copy()
 
     valid_depths = depth_np[mask_np]
 
     if len(valid_depths) == 0:
-        print("[Warning] No valid depth values found!")
+        if verbose:
+            print("[Warning] No valid depth values found!")
         return depth, depth_mask
 
     mean_depth = np.mean(valid_depths)
@@ -41,8 +43,9 @@ def filter_depth_noise_numpy(depth: np.ndarray,
     mask_np[outlier_mask] = False
     depth_np[outlier_mask] = 0
 
-    print(f"[Filter] Step 1 - Statistical outlier: removed {np.sum(outlier_mask)} points")
-    print(f"[Filter] Valid depth range: [{lower_bound:.2f}m, {upper_bound:.2f}m]")
+    if verbose:
+        print(f"[Filter] Step 1 - Statistical outlier: removed {np.sum(outlier_mask)} points")
+        print(f"[Filter] Valid depth range: [{lower_bound:.2f}m, {upper_bound:.2f}m]")
 
     if np.sum(mask_np) > 0:
         depth_for_median = depth_np.copy()
@@ -62,7 +65,8 @@ def filter_depth_noise_numpy(depth: np.ndarray,
         mask_np = local_consistency_mask
         depth_np[~mask_np] = 0
 
-        print(f"[Filter] Step 2 - Local consistency: removed {removed_inconsistent} points")
+        if verbose:
+            print(f"[Filter] Step 2 - Local consistency: removed {removed_inconsistent} points")
 
     if np.sum(mask_np) > 0:
         depth_for_grad = depth_np.copy()
@@ -78,7 +82,8 @@ def filter_depth_noise_numpy(depth: np.ndarray,
         mask_np[high_gradient_mask] = False
         depth_np[high_gradient_mask] = 0
 
-        print(f"[Filter] Step 3 - Gradient filter: removed {np.sum(high_gradient_mask)} points")
+        if verbose:
+            print(f"[Filter] Step 3 - Gradient filter: removed {np.sum(high_gradient_mask)} points")
 
     if np.sum(mask_np) > 0:
         kernel = np.ones((3, 3), dtype=np.uint8)
@@ -88,7 +93,8 @@ def filter_depth_noise_numpy(depth: np.ndarray,
         mask_np[isolated_mask] = False
         depth_np[isolated_mask] = 0
 
-        print(f"[Filter] Step 4 - Isolated points: removed {np.sum(isolated_mask)} points")
+        if verbose:
+            print(f"[Filter] Step 4 - Isolated points: removed {np.sum(isolated_mask)} points")
 
     if np.sum(mask_np) > 0:
         depth_for_bilateral = depth_np.copy().astype(np.float32)
@@ -101,13 +107,15 @@ def filter_depth_noise_numpy(depth: np.ndarray,
             )
             depth_np[mask_np] = bilateral_filtered[mask_np]
 
-            print(f"[Filter] Step 5 - Bilateral filtering applied")
+            if verbose:
+                print(f"[Filter] Step 5 - Bilateral filtering applied")
 
     remaining_points = np.sum(mask_np)
     original_points = np.sum(depth_mask > 0)
     removed_ratio = (original_points - remaining_points) / max(original_points, 1) * 100
 
-    print(f"[Filter] Summary: {original_points} -> {remaining_points} points ({removed_ratio:.1f}% removed)")
+    if verbose:
+        print(f"[Filter] Summary: {original_points} -> {remaining_points} points ({removed_ratio:.1f}% removed)")
 
     return depth_np, mask_np.astype(np.float32)
 
@@ -291,7 +299,8 @@ def load_depth(depth_path: str,
                filter_min_neighbors: int = 5,
                filter_bilateral_d: int = 7,
                filter_bilateral_sigma_color: float = 1.0,
-               filter_bilateral_sigma_space: float = 10.0) -> torch.Tensor:
+               filter_bilateral_sigma_space: float = 10.0,
+               verbose: bool = True) -> torch.Tensor:
     '''
     Load depth map and optionally apply noise filtering.
 
@@ -313,7 +322,8 @@ def load_depth(depth_path: str,
     depth = cv2.resize(depth, tar_size[::-1], interpolation=cv2.INTER_NEAREST)
 
     if enable_noise_filter:
-        print("\n=== Applying strict depth noise filtering ===")
+        if verbose:
+            print("\n=== Applying strict depth noise filtering ===")
         initial_mask = ((depth > min_prompt) & (depth < max_prompt)).astype(np.float32)
         depth, filtered_mask = filter_depth_noise_numpy(
             depth=depth,
@@ -324,12 +334,13 @@ def load_depth(depth_path: str,
             min_neighbors=filter_min_neighbors,
             bilateral_d=filter_bilateral_d,
             bilateral_sigma_color=filter_bilateral_sigma_color,
-            bilateral_sigma_space=filter_bilateral_sigma_space
+            bilateral_sigma_space=filter_bilateral_sigma_space,
+            verbose=verbose,
         )
-        print("=== Depth noise filtering completed ===\n")
+        if verbose:
+            print("=== Depth noise filtering completed ===\n")
         depth_mask = filtered_mask
     else:
-        print("[Info] Skipping depth noise filtering")
         depth_mask = ((depth > min_prompt) & (depth < max_prompt)).astype(np.float32)
 
     # ---------- Valid Depth Prompt ----------

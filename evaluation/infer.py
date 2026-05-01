@@ -148,6 +148,11 @@ def parse_arguments():
         default=None,
         help="Maximum valid raw-depth prompt in meters. Defaults to HAMMER depth-range max.",
     )
+    parser.add_argument(
+        "--enable-noise-filter",
+        action="store_true",
+        help="Apply strict depth noise filtering before sampling raw-depth prompts.",
+    )
     return parser.parse_args()
 
 
@@ -222,6 +227,7 @@ def infer_one_sample(
     prompt_samples: int,
     prompt_min_depth: float,
     prompt_max_depth: float,
+    enable_noise_filter: bool,
 ) -> np.ndarray:
     _, image, (org_h, org_w) = load_image(rgb_path, input_size)
     image = image.cuda(non_blocking=True)
@@ -232,6 +238,8 @@ def infer_one_sample(
         num_samples=prompt_samples,
         min_prompt=prompt_min_depth,
         max_prompt=prompt_max_depth,
+        enable_noise_filter=enable_noise_filter,
+        verbose=False,
     )
     gt_depth = gt_depth.cuda(non_blocking=True)
     prompt_depth = prompt_depth.cuda(non_blocking=True)
@@ -331,6 +339,10 @@ def inference(args) -> None:
         visualization_dir=visualization_dir,
     )
     model = load_infinidepth_model(args)
+    if args.enable_noise_filter:
+        print("[Info] Depth noise filtering is enabled before sampling raw-depth prompts.")
+    else:
+        print("[Info] Depth noise filtering is disabled; raw depth prompts will be used directly.")
 
     for rgb_path, raw_depth_path, gt_depth_path in tqdm(dataset, desc="InfiniDepth HAMMER inference"):
         sample_id = sample_id_from_rgb_path(rgb_path)
@@ -343,6 +355,7 @@ def inference(args) -> None:
             prompt_samples=args.prompt_samples,
             prompt_min_depth=prompt_min_depth,
             prompt_max_depth=prompt_max_depth,
+            enable_noise_filter=args.enable_noise_filter,
         )
         np.save(pred_path, pred_depth)
         if args.save_vis:

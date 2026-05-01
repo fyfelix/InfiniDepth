@@ -26,6 +26,7 @@ Environment overrides:
   NUM_WORKERS           Recorded for compatibility; adapter uses a single-process loop. Default: 0
   MAX_SAMPLES           Maximum samples to infer/evaluate. 0 means all samples. Default: 0
   SAVE_VIS              Save visualizations to visualizations/. Default: false
+  ENABLE_NOISE_FILTER   Apply strict filtering before sampling raw-depth prompts. Default: false
   PYTHON_BIN            Python executable. Default: ./.venv/bin/python when present
 
 This wrapper is fixed to InfiniDepth_DepthSensor for HAMMER metric depth evaluation.
@@ -49,6 +50,7 @@ batch_size="${BATCH_SIZE:-1}"
 num_workers="${NUM_WORKERS:-0}"
 max_samples="${MAX_SAMPLES:-0}"
 save_vis="${SAVE_VIS:-false}"
+enable_noise_filter="${ENABLE_NOISE_FILTER:-false}"
 timestamp="$(date '+%Y-%m-%d_%H-%M-%S')"
 run_output_dir="${output_base_dir}/${timestamp}"
 prediction_dir="${run_output_dir}/predictions"
@@ -72,6 +74,7 @@ echo "prediction dir: ${prediction_dir}"
 echo "visualization dir: ${visualization_dir}"
 echo "max samples: ${max_samples}"
 echo "save vis: ${save_vis}"
+echo "enable noise filter: ${enable_noise_filter}"
 echo "cleanup npy: ${cleanup_npy}"
 
 mkdir -p "${run_output_dir}" "${prediction_dir}" "${visualization_dir}"
@@ -93,6 +96,10 @@ infer_args=(
 
 if [[ "${save_vis}" == "true" ]]; then
     infer_args+=(--save-vis)
+fi
+
+if [[ "${enable_noise_filter}" == "true" ]]; then
+    infer_args+=(--enable-noise-filter)
 fi
 
 "${PYTHON_BIN}" "${infer_args[@]}"
