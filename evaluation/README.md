@@ -35,7 +35,7 @@ INPUT_SIZE            InfiniDepth 输入尺寸，默认 768x1024
 BATCH_SIZE            兼容参数，当前适配器逐样本推理，建议 1
 NUM_WORKERS           兼容参数，当前适配器单进程读取，建议 0
 MAX_SAMPLES           最多评估样本数，默认 0 表示全部
-SAVE_VIS              是否保存可视化，默认 false
+SAVE_VIS              是否保存可视化，默认 true
 PYTHON_BIN            Python 可执行文件，默认优先使用 ./.venv/bin/python
 ```
 
@@ -45,7 +45,6 @@ PYTHON_BIN            Python 可执行文件，默认优先使用 ./.venv/bin/py
 DATASET_PATH=data/HAMMER/test.jsonl \
 OUTPUT_DIR=evaluation/output \
 MAX_SAMPLES=1 \
-SAVE_VIS=true \
 ./evaluation/run_eval.sh ckpts/infinidepth_depthsensor.ckpt d435 vitl16 false
 ```
 
@@ -79,7 +78,7 @@ evaluation/output/<timestamp>/
   mean_metrics_<timestamp>_False.json
 ```
 
-未设置 `SAVE_VIS=true` 时，`visualizations/` 目录会创建但不会写入图片。`cleanup_npy=true` 时只删除 `predictions/*.npy`，保留指标、元数据和可视化。
+默认会保存可视化图片。设置 `SAVE_VIS=false` 时，`visualizations/` 目录会创建但不会写入图片。`cleanup_npy=true` 时只删除 `predictions/*.npy`，保留指标、元数据和可视化。
 
 ## Smoke Check
 

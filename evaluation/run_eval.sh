@@ -25,7 +25,7 @@ Environment overrides:
   BATCH_SIZE            Recorded for compatibility; adapter runs sample-by-sample. Default: 1
   NUM_WORKERS           Recorded for compatibility; adapter uses a single-process loop. Default: 0
   MAX_SAMPLES           Maximum samples to infer/evaluate. 0 means all samples. Default: 0
-  SAVE_VIS              Save visualizations to visualizations/. Default: false
+  SAVE_VIS              Save visualizations to visualizations/. Default: true
   ENABLE_NOISE_FILTER   Apply strict filtering before sampling raw-depth prompts. Default: false
   PYTHON_BIN            Python executable. Default: ./.venv/bin/python when present
 
@@ -49,7 +49,7 @@ input_size="${INPUT_SIZE:-768x1024}"
 batch_size="${BATCH_SIZE:-1}"
 num_workers="${NUM_WORKERS:-0}"
 max_samples="${MAX_SAMPLES:-0}"
-save_vis="${SAVE_VIS:-false}"
+save_vis="${SAVE_VIS:-true}"
 enable_noise_filter="${ENABLE_NOISE_FILTER:-false}"
 timestamp="$(date '+%Y-%m-%d_%H-%M-%S')"
 run_output_dir="${output_base_dir}/${timestamp}"
@@ -94,9 +94,18 @@ infer_args=(
     --max-samples "${max_samples}"
 )
 
-if [[ "${save_vis}" == "true" ]]; then
-    infer_args+=(--save-vis)
-fi
+case "${save_vis}" in
+    [Tt][Rr][Uu][Ee])
+        infer_args+=(--save-vis)
+        ;;
+    [Ff][Aa][Ll][Ss][Ee])
+        infer_args+=(--no-save-vis)
+        ;;
+    *)
+        echo "SAVE_VIS must be true or false, got: ${save_vis}" >&2
+        exit 1
+        ;;
+esac
 
 if [[ "${enable_noise_filter}" == "true" ]]; then
     infer_args+=(--enable-noise-filter)

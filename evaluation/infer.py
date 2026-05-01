@@ -127,8 +127,9 @@ def parse_arguments():
     )
     parser.add_argument(
         "--save-vis",
-        action="store_true",
-        help="Save RGB/raw-depth/pred-depth/GT-depth visualization grids.",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Save RGB/raw-depth/pred-depth/GT-depth visualization grids. Use --no-save-vis to disable.",
     )
     parser.add_argument(
         "--prompt-samples",
