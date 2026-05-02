@@ -19,8 +19,8 @@ Usage:
   ./evaluation/run_eval.sh [model_path=ckpts/infinidepth_depthsensor.ckpt] [raw_type=d435] [encoder=vitl16] [cleanup_npy=false]
 
 Environment overrides:
-  DATASET_PATH          HAMMER JSONL path. Default: data/HAMMER/test.jsonl
-  OUTPUT_DIR            Base output directory. Each run writes to OUTPUT_DIR/YYYY-mm-dd_HH-MM-SS. Default: evaluation/output
+  DATASET_PATH          Dataset JSONL path for HAMMER or ClearPose. Default: data/HAMMER/test.jsonl
+  OUTPUT_DIR            Base output directory. Each run writes to OUTPUT_DIR/<dataset>_YYYY-mm-dd_HH-MM-SS. Default: evaluation/output
   INPUT_SIZE            InfiniDepth input size as HxW. Default: 768x1024
   BATCH_SIZE            Recorded for compatibility; adapter runs sample-by-sample. Default: 1
   NUM_WORKERS           Recorded for compatibility; adapter uses a single-process loop. Default: 0
@@ -29,7 +29,8 @@ Environment overrides:
   ENABLE_NOISE_FILTER   Apply strict filtering before sampling raw-depth prompts. Default: false
   PYTHON_BIN            Python executable. Default: ./.venv/bin/python when present
 
-This wrapper is fixed to InfiniDepth_DepthSensor for HAMMER metric depth evaluation.
+This wrapper is fixed to InfiniDepth_DepthSensor for HAMMER/ClearPose metric depth evaluation.
+ClearPose only supports raw_type=d435.
 EOF
 }
 
@@ -44,6 +45,20 @@ encoder="${3:-vitl16}"
 cleanup_npy="${4:-false}"
 
 dataset_path="${DATASET_PATH:-data/HAMMER/test.jsonl}"
+case "${dataset_path}" in
+    *clearpose*|*ClearPose*)
+        dataset_tag="clearpose"
+        ;;
+    *)
+        dataset_tag="hammer"
+        ;;
+esac
+
+if [[ "${dataset_tag}" == "clearpose" && "${raw_type}" != "d435" ]]; then
+    echo "ClearPose only supports raw_type=d435, got: ${raw_type}" >&2
+    exit 1
+fi
+
 output_base_dir="${OUTPUT_DIR:-evaluation/output}"
 input_size="${INPUT_SIZE:-768x1024}"
 batch_size="${BATCH_SIZE:-1}"
@@ -52,7 +67,7 @@ max_samples="${MAX_SAMPLES:-0}"
 save_vis="${SAVE_VIS:-true}"
 enable_noise_filter="${ENABLE_NOISE_FILTER:-false}"
 timestamp="$(date '+%Y-%m-%d_%H-%M-%S')"
-run_output_dir="${output_base_dir}/${timestamp}"
+run_output_dir="${output_base_dir}/${dataset_tag}_${timestamp}"
 prediction_dir="${run_output_dir}/predictions"
 visualization_dir="${run_output_dir}/visualizations"
 
@@ -66,6 +81,7 @@ echo "model path: ${model_path}"
 echo "fixed model class: InfiniDepth_DepthSensor"
 echo "encoder: ${encoder}"
 echo "dataset path: ${dataset_path}"
+echo "dataset tag: ${dataset_tag}"
 echo "raw type: ${raw_type}"
 echo "input size: ${input_size}"
 echo "output base dir: ${output_base_dir}"

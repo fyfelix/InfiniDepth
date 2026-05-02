@@ -12,8 +12,8 @@ import torch
 from PIL import Image, ImageOps
 from tqdm import tqdm
 
-from dataset import HAMMERDataset
-from utils.naming import sample_id_from_rgb_path
+from dataset import limit_dataset_for_eval, load_dataset_for_eval
+from utils.naming import resolve_sample_name
 
 
 EVAL_DIR = Path(__file__).resolve().parent
@@ -47,7 +47,7 @@ def parse_hw(value: str) -> tuple[int, int]:
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="InfiniDepth_DepthSensor inference for HAMMER evaluation",
+        description="InfiniDepth_DepthSensor inference for HAMMER/ClearPose evaluation",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -60,7 +60,7 @@ def parse_arguments():
         "--dataset",
         type=str,
         required=True,
-        help="HAMMER test JSONL path.",
+        help="HAMMER or ClearPose test JSONL path.",
     )
     parser.add_argument(
         "--output",
@@ -85,7 +85,7 @@ def parse_arguments():
         type=str,
         required=True,
         choices=["d435", "l515", "tof"],
-        help="HAMMER raw depth field used as the depth sensor input.",
+        help="Raw depth field used as the depth sensor input. ClearPose only supports d435.",
     )
     parser.add_argument(
         "--model-type",
@@ -111,7 +111,7 @@ def parse_arguments():
         "--batch-size",
         type=int,
         default=1,
-        help="Kept for wrapper compatibility. InfiniDepth inference runs one HAMMER sample at a time.",
+        help="Kept for wrapper compatibility. InfiniDepth inference runs one sample at a time.",
     )
     parser.add_argument(
         "--num-workers",
@@ -123,7 +123,7 @@ def parse_arguments():
         "--max-samples",
         type=int,
         default=0,
-        help="Maximum number of HAMMER samples to process. 0 means all samples.",
+        help="Maximum number of samples to process. 0 means all samples.",
     )
     parser.add_argument(
         "--save-vis",
@@ -141,13 +141,13 @@ def parse_arguments():
         "--prompt-min-depth",
         type=float,
         default=None,
-        help="Minimum valid raw-depth prompt in meters. Defaults to HAMMER depth-range min.",
+        help="Minimum valid raw-depth prompt in meters. Defaults to dataset depth-range min.",
     )
     parser.add_argument(
         "--prompt-max-depth",
         type=float,
         default=None,
-        help="Maximum valid raw-depth prompt in meters. Defaults to HAMMER depth-range max.",
+        help="Maximum valid raw-depth prompt in meters. Defaults to dataset depth-range max.",
     )
     parser.add_argument(
         "--enable-noise-filter",
@@ -161,7 +161,10 @@ def validate_inputs(args) -> None:
     if not os.path.exists(args.model_path):
         raise FileNotFoundError(f"Model checkpoint not found: {args.model_path}")
     if not os.path.exists(args.dataset):
-        raise FileNotFoundError(f"HAMMER dataset JSONL not found: {args.dataset}")
+        raise FileNotFoundError(f"Dataset JSONL not found: {args.dataset}")
+    dataset_lower = args.dataset.lower()
+    if "clearpose" in dataset_lower and args.raw_type != "d435":
+        raise ValueError("ClearPose dataset only supports raw-type=d435")
     if args.batch_size != 1:
         print("[Warning] This InfiniDepth adapter processes one sample at a time; --batch-size is recorded only.")
     if args.num_workers != 0:
@@ -189,15 +192,9 @@ def resolve_output_dirs(args) -> tuple[str, str, str]:
     return output_dir, prediction_dir, visualization_dir
 
 
-def limit_dataset(dataset: HAMMERDataset, max_samples: int) -> HAMMERDataset:
-    if max_samples > 0:
-        dataset.data = dataset.data[:max_samples]
-    return dataset
-
-
 def save_args(
     args,
-    dataset: HAMMERDataset,
+    dataset,
     *,
     prediction_dir: str,
     visualization_dir: str,
@@ -322,8 +319,8 @@ def save_visualization(
 def inference(args) -> None:
     validate_inputs(args)
 
-    dataset = HAMMERDataset(args.dataset, args.raw_type)
-    dataset = limit_dataset(dataset, args.max_samples)
+    dataset = load_dataset_for_eval(args.dataset, args.raw_type)
+    dataset = limit_dataset_for_eval(dataset, args.max_samples)
     prompt_min_depth = args.prompt_min_depth
     prompt_max_depth = args.prompt_max_depth
     if prompt_min_depth is None:
@@ -345,8 +342,8 @@ def inference(args) -> None:
     else:
         print("[Info] Depth noise filtering is disabled; raw depth prompts will be used directly.")
 
-    for rgb_path, raw_depth_path, gt_depth_path in tqdm(dataset, desc="InfiniDepth HAMMER inference"):
-        sample_id = sample_id_from_rgb_path(rgb_path)
+    for rgb_path, raw_depth_path, gt_depth_path in tqdm(dataset, desc="InfiniDepth inference"):
+        sample_id = resolve_sample_name(rgb_path, args.dataset)
         pred_path = os.path.join(prediction_dir, f"{sample_id}.npy")
         pred_depth = infer_one_sample(
             model=model,
