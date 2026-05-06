@@ -1,126 +1,146 @@
-# InfiniDepth HAMMER / ClearPose Evaluation
+# InfiniDepth HAMMER / ClearPose / DREDS Evaluation
 
-这个目录是在当前 InfiniDepth 外部项目中适配的 HAMMER / ClearPose 评估入口。原始评估 pipeline 仍通过根目录下的 `run_bs_eval_pipeline` 软链接保留为参考来源，最终可运行脚本放在本目录。
-
-## 适配范围
-
-- 支持 HAMMER 和 ClearPose JSONL，默认 JSONL 为 `data/HAMMER/test.jsonl`。
-- 模型固定为 `InfiniDepth_DepthSensor`，默认 encoder 为 `vitl16`。
-- 输入使用 HAMMER sample 中的 `rgb` 和指定 `raw-type` 对应的 raw depth：`d435_depth`、`l515_depth` 或 `tof_depth`。
-- ClearPose 使用 JSONL 中的 `rgb`、`rgb-suffix`、`raw_depth-suffix`、`depth-suffix` 展开帧文件，且只支持 `raw-type=d435`。
-- `infer.py` 输出每个 sample 的 `HxW float32` `.npy`，内容是 metric depth，单位为 meter。
-- `eval.py` 继续复用原 pipeline 的 GT depth 读取、valid mask、固定指标和 CSV/JSON 保存逻辑。
-
-这里没有把评估代码改造成通用 adapter 框架，也没有改动项目训练代码。
-
-## 运行
-
-默认使用 uv 创建的本地 `.venv`：
-
-```bash
-./evaluation/run_eval.sh ckpts/infinidepth_depthsensor.ckpt
-```
-
-完整参数：
+这个目录是 InfiniDepth 的 RGB + depth sensor metric depth 评估入口，已按 `eval_pipeline_cdm` 的新版导出结构整理，但模型加载和推理链路仍固定使用本项目的 `InfiniDepth_DepthSensor`。
 
 ```text
-./evaluation/run_eval.sh [model_path=ckpts/infinidepth_depthsensor.ckpt] [raw_type=d435] [encoder=vitl16] [cleanup_npy=false]
+evaluation/
+  dataset.py
+  infer.py
+  eval.py
+  run_hammer.sh
+  run_clearpose.sh
+  run_dreds.sh
+  requirements.txt
+  utils/
+    metric.py
+    img_utils.py
 ```
 
-常用环境变量：
+## 数据约定
 
-```text
-DATASET_PATH          HAMMER 或 ClearPose JSONL 路径，默认 data/HAMMER/test.jsonl
-OUTPUT_DIR            基础输出根目录，默认 evaluation/output
-INPUT_SIZE            InfiniDepth 输入尺寸，默认 768x1024
-BATCH_SIZE            兼容参数，当前适配器逐样本推理，建议 1
-NUM_WORKERS           兼容参数，当前适配器单进程读取，建议 0
-MAX_SAMPLES           最多评估样本数，默认 0 表示全部
-SAVE_VIS              是否保存可视化，默认 true
-PYTHON_BIN            Python 可执行文件，默认优先使用 ./.venv/bin/python
-```
+- HAMMER JSONL 每行是单样本，使用 `rgb`、`depth`、`depth-range`，并按 `raw-type` 选择 `d435_depth`、`l515_depth` 或 `tof_depth`。GT depth 为 16-bit PNG 毫米值，`depth_scale=1000.0`。
+- ClearPose JSONL 每行是 sequence，使用 `rgb`、`rgb-suffix`、`raw_depth-suffix`、`depth-suffix`、`depth-range` 展开帧；固定 `raw-type=d435`，`depth_scale=1000.0`。
+- DREDS JSONL 沿用 ClearPose 式 sequence schema，支持 `test_std_catknown.jsonl` 和 `test_std_catnovel.jsonl`；raw / GT depth 为 EXR float meter，`depth_scale=1.0`。
+- 样本命名统一由 `dataset.py` 生成：HAMMER 为 `scene#stem`，ClearPose 和 DREDS 为 `dir1#dir2#stem`。
 
-HAMMER 示例：
+## 运行路线
+
+默认优先使用项目根目录 `.venv/bin/python`，也可以通过 `PYTHON_BIN` 覆盖。
+
+### HAMMER
 
 ```bash
 DATASET_PATH=data/HAMMER/test.jsonl \
-OUTPUT_DIR=evaluation/output \
+OUTPUT_DIR=/tmp/infinidepth_hammer_eval \
 MAX_SAMPLES=1 \
-./evaluation/run_eval.sh ckpts/infinidepth_depthsensor.ckpt d435 vitl16 false
+bash evaluation/run_hammer.sh ckpts/infinidepth_depthsensor.ckpt vitl16 d435 false
 ```
 
-ClearPose 示例：
+参数：
+
+```text
+bash evaluation/run_hammer.sh [model_path=ckpts/infinidepth_depthsensor.ckpt] [encoder=vitl16] [camera_type=d435] [cleanup_npy=false]
+```
+
+`camera_type` 支持 `d435`、`l515`、`tof`。
+
+### ClearPose
 
 ```bash
 DATASET_PATH=data/clearpose/test.jsonl \
-OUTPUT_DIR=/tmp/cdm_clearpose_eval_out \
-BATCH_SIZE=16 \
-NUM_WORKERS=4 \
-./evaluation/run_eval.sh ckpts/infinidepth_depthsensor.ckpt d435 vitl16 false
+OUTPUT_DIR=/tmp/infinidepth_clearpose_eval \
+bash evaluation/run_clearpose.sh ckpts/infinidepth_depthsensor.ckpt vitl16 false
 ```
 
-## 模型与输出
-
-当前适配的是 README 推荐的 RGB + depth sensor metric depth 路径：
-
-- 模型类：`InfiniDepth_DepthSensor`
-- 默认 checkpoint：`ckpts/infinidepth_depthsensor.ckpt`
-- 默认 encoder：`vitl16`
-- 输入 RGB：PIL 按 RGB 读取，resize 到 `INPUT_SIZE`
-- 输入 raw depth：复用 `InfiniDepth.utils.io_utils.load_depth`
-- 模型内部输入 depth：按官方推理逻辑转成 disparity prompt
-- 输出：模型返回 metric depth，保存为原图尺寸 `.npy`
-
-没有默认启用 alignment。raw depth 作为 DepthSensor prompt 使用，而不是用 GT depth 对预测做后处理对齐。
-
-## 输出目录
-
-`OUTPUT_DIR` 是基础输出根目录。每次运行会创建带数据集标签的时间戳子目录，格式为 `<dataset>_YYYY-mm-dd_HH-MM-SS`：
+参数：
 
 ```text
-evaluation/output/<dataset>_<timestamp>/
+bash evaluation/run_clearpose.sh [model_path=ckpts/infinidepth_depthsensor.ckpt] [encoder=vitl16] [cleanup_npy=false]
+```
+
+ClearPose 固定按 `raw-type=d435` 运行。
+
+### DREDS
+
+```bash
+DREDS_KNOWN_JSONL=data/DREDS/test_std_catknown.jsonl \
+DREDS_NOVEL_JSONL=data/DREDS/test_std_catnovel.jsonl \
+OUTPUT_ROOT=/tmp/infinidepth_dreds_eval \
+bash evaluation/run_dreds.sh ckpts/infinidepth_depthsensor.ckpt vitl16 all false
+```
+
+参数：
+
+```text
+bash evaluation/run_dreds.sh [model_path=ckpts/infinidepth_depthsensor.ckpt] [encoder=vitl16] [variant=all] [cleanup_npy=false]
+```
+
+`variant` 支持 `catknown`、`catnovel`、`all`。`all` 会顺序运行 known 和 novel，此时只能使用 `OUTPUT_ROOT`；单 variant 可用 `OUTPUT_DIR` 指定唯一输出目录。
+
+## 环境变量
+
+```text
+DATASET_PATH          HAMMER / ClearPose JSONL 路径
+DREDS_KNOWN_JSONL     DREDS catknown JSONL 路径，默认 data/DREDS/test_std_catknown.jsonl
+DREDS_NOVEL_JSONL     DREDS catnovel JSONL 路径，默认 data/DREDS/test_std_catnovel.jsonl
+OUTPUT_DIR            单数据集或单 DREDS variant 输出目录
+OUTPUT_ROOT           DREDS all 模式默认输出根目录
+INPUT_SIZE            InfiniDepth 输入尺寸，默认 768x1024
+BATCH_SIZE            兼容参数，当前适配器逐样本推理，默认 1
+NUM_WORKERS           兼容参数，当前适配器单进程读取，默认 0
+MAX_SAMPLES           最多推理/评估样本数，默认 0 表示全部
+SAVE_VIS              是否保存可视化，默认 true
+ENABLE_NOISE_FILTER   是否对 raw depth prompt 做严格过滤，默认 false
+PROMPT_SAMPLES        最大 raw-depth prompt 采样点数，默认 1500
+PYTHON_BIN            Python 可执行文件
+```
+
+未设置 `OUTPUT_DIR` / `OUTPUT_ROOT` 时，默认写到 checkpoint 同级目录：
+
+```text
+<checkpoint_dir>/hammer_<checkpoint_stub>_data_<camera_type>/
+<checkpoint_dir>/clearpose_<checkpoint_stub>_data_d435/
+<checkpoint_dir>/dreds_catknown_<checkpoint_stub>/
+<checkpoint_dir>/dreds_catnovel_<checkpoint_stub>/
+```
+
+## 输出结构
+
+```text
+<output_dir>/
   args.json
   eval_args.json
   predictions/
-    <scene>#<sample>.npy
+    <sample>.npy
   visualizations/
-    <scene>#<sample>_promptda_vis.jpg
+    <sample>_promptda_vis.jpg
   all_metrics_<timestamp>_False.csv
   mean_metrics_<timestamp>_False.json
 ```
 
-默认会保存可视化图片。设置 `SAVE_VIS=false` 时，`visualizations/` 目录会创建但不会写入图片。`cleanup_npy=true` 时只删除 `predictions/*.npy`，保留指标、元数据和可视化。
+`infer.py` 默认把预测写入 `predictions/`，可视化写入 `visualizations/`。`eval.py` 默认读取 `predictions/*.npy`，如果找不到会 fallback 到旧版根目录 `<output_dir>/*.npy`。`cleanup_npy=true` 时只删除 `predictions/*.npy`，保留指标、元数据和可视化。
 
-ClearPose 的预测文件名使用 `set#scene#frame-stem.npy`，例如：
+## 关键实现约定
 
-```text
-data/clearpose/set2/scene4/000709-color.png
--> set2#scene4#000709-color.npy
-```
+- `infer.py` 保留 `build_model()`、`load_image()`、`load_depth()` 和 InfiniDepth disparity prompt 推理方式，不使用 CDM 的 `RGBDDepth`。
+- `dataset.py` 提供 `detect_dataset_kind()`、`load_test_dataset()`、`sample_name_for_dataset()`，用于统一 infer/eval 的数据集分发和命名。
+- DREDS 允许 prediction shape 与 GT shape 不一致，`eval.py` 会用 nearest resize 对齐；HAMMER / ClearPose 遇到 shape mismatch 会报错。
+- `OPENCV_IO_ENABLE_OPENEXR=1` 会在 Python 导入 OpenCV 前设置，`run_dreds.sh` 也会在启动 Python 前导出该变量。
 
 ## Smoke Check
 
-本机可做轻量检查：
-
 ```bash
-PYTHONPYCACHEPREFIX=/tmp/cdm_pycache .venv/bin/python -m py_compile \
+PYTHONPYCACHEPREFIX=/tmp/infinidepth-pycache .venv/bin/python -m py_compile \
   evaluation/dataset.py evaluation/infer.py evaluation/eval.py
-./evaluation/run_eval.sh --help
-.venv/bin/python -B evaluation/infer.py --help
-.venv/bin/python -B evaluation/eval.py --help
-bash -n evaluation/run_eval.sh
+bash -n evaluation/run_hammer.sh
+bash -n evaluation/run_clearpose.sh
+bash -n evaluation/run_dreds.sh
+bash evaluation/run_hammer.sh --help
+bash evaluation/run_clearpose.sh --help
+bash evaluation/run_dreds.sh --help
+PYTHONPYCACHEPREFIX=/tmp/infinidepth-pycache .venv/bin/python -B evaluation/infer.py --help
+PYTHONPYCACHEPREFIX=/tmp/infinidepth-pycache .venv/bin/python -B evaluation/eval.py --help
 git diff --check
 ```
 
-如果本地存在 ClearPose 样例，可检查 JSONL 展开：
-
-```bash
-PYTHONPATH=evaluation .venv/bin/python -c \
-'from dataset import ClearPoseDataset; ds=ClearPoseDataset("data/clearpose/test.jsonl"); print(len(ds)); print(ds[0])'
-```
-
-## 已知限制
-
-- InfiniDepth 模型初始化代码要求 CUDA；MacBook 本地只能做参数解析、import 和数据路径 smoke check，不能完整跑模型推理。
-- 当前适配不支持 RGB-only `InfiniDepth`。RGB-only 输出是 relative depth，不适合在没有 alignment 的情况下直接做 metric depth 评估。
-- `batch_size` 保留为兼容参数，当前实现优先保证正确性，逐样本推理。
+完整推理需要真实 checkpoint、真实数据和 CUDA 环境。Mac 本地通常只适合做 CLI、import、factory 和静态检查。

@@ -6,14 +6,15 @@ import os
 import sys
 from pathlib import Path
 
+os.environ.setdefault("OPENCV_IO_ENABLE_OPENEXR", "1")
+
 import cv2
 import numpy as np
 import torch
 from PIL import Image, ImageOps
 from tqdm import tqdm
 
-from dataset import limit_dataset_for_eval, load_dataset_for_eval
-from utils.naming import resolve_sample_name
+from dataset import limit_dataset_for_eval, load_test_dataset, sample_name_for_dataset
 
 
 EVAL_DIR = Path(__file__).resolve().parent
@@ -47,7 +48,7 @@ def parse_hw(value: str) -> tuple[int, int]:
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="InfiniDepth_DepthSensor inference for HAMMER/ClearPose evaluation",
+        description="InfiniDepth_DepthSensor inference for HAMMER/ClearPose/DREDS evaluation",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -60,32 +61,32 @@ def parse_arguments():
         "--dataset",
         type=str,
         required=True,
-        help="HAMMER or ClearPose test JSONL path.",
+        help="HAMMER, ClearPose, or DREDS test JSONL path.",
     )
     parser.add_argument(
         "--output",
         type=str,
         default="evaluation/output",
-        help="Run metadata directory for args.json. Predictions fall back here when --prediction-dir is omitted.",
+        help="Run metadata directory for args.json.",
     )
     parser.add_argument(
         "--prediction-dir",
         type=str,
         default=None,
-        help="Directory for per-sample .npy predictions. Defaults to --output.",
+        help="Directory for per-sample .npy predictions. Defaults to --output/predictions.",
     )
     parser.add_argument(
         "--visualization-dir",
         type=str,
         default=None,
-        help="Directory for optional visualizations. Defaults to --output.",
+        help="Directory for optional visualizations. Defaults to --output/visualizations.",
     )
     parser.add_argument(
         "--raw-type",
         type=str,
         required=True,
         choices=["d435", "l515", "tof"],
-        help="Raw depth field used as the depth sensor input. ClearPose only supports d435.",
+        help="Raw depth field used as the depth sensor input. ClearPose only supports d435; DREDS ignores this selector.",
     )
     parser.add_argument(
         "--model-type",
@@ -187,8 +188,8 @@ def load_infinidepth_model(args):
 
 def resolve_output_dirs(args) -> tuple[str, str, str]:
     output_dir = args.output
-    prediction_dir = args.prediction_dir or args.output
-    visualization_dir = args.visualization_dir or args.output
+    prediction_dir = args.prediction_dir or os.path.join(args.output, "predictions")
+    visualization_dir = args.visualization_dir or os.path.join(args.output, "visualizations")
     return output_dir, prediction_dir, visualization_dir
 
 
@@ -261,7 +262,7 @@ def infer_one_sample(
 def load_gt_depth_for_vis(depth_path: str, depth_scale: float = 1000.0) -> np.ndarray:
     depth = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
     if depth is None:
-        raise ValueError(f"Failed to read GT depth for visualization: {depth_path}")
+        raise ValueError(f"Could not load GT depth from {depth_path}")
     return np.asarray(depth).astype(np.float32) / depth_scale
 
 
@@ -292,6 +293,7 @@ def save_visualization(
     output_path: str,
     min_depth: float,
     max_depth: float,
+    depth_scale: float,
 ) -> None:
     with Image.open(rgb_path) as pil_image:
         rgb = np.asarray(ImageOps.exif_transpose(pil_image).convert("RGB"))
@@ -301,7 +303,11 @@ def save_visualization(
         rgb = cv2.resize(rgb, (width, height), interpolation=cv2.INTER_AREA)
 
     raw_depth = resize_depth_for_vis(read_depth_array(raw_depth_path), height, width)
-    gt_depth = resize_depth_for_vis(load_gt_depth_for_vis(gt_depth_path), height, width)
+    gt_depth = resize_depth_for_vis(
+        load_gt_depth_for_vis(gt_depth_path, depth_scale),
+        height,
+        width,
+    )
 
     panels = [
         rgb,
@@ -319,7 +325,10 @@ def save_visualization(
 def inference(args) -> None:
     validate_inputs(args)
 
-    dataset = load_dataset_for_eval(args.dataset, args.raw_type)
+    dataset, dataset_kind = load_test_dataset(args.dataset, args.raw_type)
+    args.dataset_kind = dataset_kind
+    if hasattr(dataset, "depth_scale"):
+        args.depth_scale = dataset.depth_scale
     dataset = limit_dataset_for_eval(dataset, args.max_samples)
     prompt_min_depth = args.prompt_min_depth
     prompt_max_depth = args.prompt_max_depth
@@ -343,7 +352,7 @@ def inference(args) -> None:
         print("[Info] Depth noise filtering is disabled; raw depth prompts will be used directly.")
 
     for rgb_path, raw_depth_path, gt_depth_path in tqdm(dataset, desc="InfiniDepth inference"):
-        sample_id = resolve_sample_name(rgb_path, args.dataset)
+        sample_id = sample_name_for_dataset(dataset_kind, rgb_path)
         pred_path = os.path.join(prediction_dir, f"{sample_id}.npy")
         pred_depth = infer_one_sample(
             model=model,
@@ -366,6 +375,7 @@ def inference(args) -> None:
                 output_path=vis_path,
                 min_depth=prompt_min_depth,
                 max_depth=prompt_max_depth,
+                depth_scale=args.depth_scale,
             )
 
     print(f"Saved predictions to: {prediction_dir}")
