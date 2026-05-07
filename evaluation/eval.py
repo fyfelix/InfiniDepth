@@ -13,7 +13,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from dataset import limit_dataset_for_eval, load_test_dataset, sample_name_for_dataset
+from dataset import limit_dataset_for_eval, load_test_dataset, sample_name_for_sample
 from utils.metric import abs_relative_difference, rmse_linear, delta1_acc, mae_linear, delta4_acc_105, delta5_acc110
 
 
@@ -39,7 +39,7 @@ def parse_arguments():
         help="Path to the model checkpoint file",
     )
     parser.add_argument(
-        "--dataset", type=str, required=True, help="HAMMER, ClearPose, or DREDS JSONL path"
+        "--dataset", type=str, required=True, help="HAMMER, ClearPose, DREDS, or TransCG JSONL path"
     )
     parser.add_argument(
         "--output",
@@ -129,7 +129,7 @@ class EvalDataset(Dataset):
         sample = self.dataset[idx]
         depth_GT, valid_mask = load_gt_depth(sample[2], self.depth_scale, self.args.max_depth, self.args.min_depth)
 
-        name = sample_name_for_dataset(self.args.dataset_kind, sample[0])
+        name = sample_name_for_sample(self.args.dataset_kind, sample)
 
         pred_path = join(self.prediction_path, name + ".npy")
         if not exists(pred_path):

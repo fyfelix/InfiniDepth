@@ -14,7 +14,7 @@ import torch
 from PIL import Image, ImageOps
 from tqdm import tqdm
 
-from dataset import limit_dataset_for_eval, load_test_dataset, sample_name_for_dataset
+from dataset import limit_dataset_for_eval, load_test_dataset, sample_name_for_sample
 
 
 EVAL_DIR = Path(__file__).resolve().parent
@@ -48,7 +48,7 @@ def parse_hw(value: str) -> tuple[int, int]:
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="InfiniDepth_DepthSensor inference for HAMMER/ClearPose/DREDS evaluation",
+        description="InfiniDepth_DepthSensor inference for HAMMER/ClearPose/DREDS/TransCG evaluation",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -61,7 +61,7 @@ def parse_arguments():
         "--dataset",
         type=str,
         required=True,
-        help="HAMMER, ClearPose, or DREDS test JSONL path.",
+        help="HAMMER, ClearPose, DREDS, or TransCG test JSONL path.",
     )
     parser.add_argument(
         "--output",
@@ -351,8 +351,9 @@ def inference(args) -> None:
     else:
         print("[Info] Depth noise filtering is disabled; raw depth prompts will be used directly.")
 
-    for rgb_path, raw_depth_path, gt_depth_path in tqdm(dataset, desc="InfiniDepth inference"):
-        sample_id = sample_name_for_dataset(dataset_kind, rgb_path)
+    for sample in tqdm(dataset, desc="InfiniDepth inference"):
+        rgb_path, raw_depth_path, gt_depth_path = sample[:3]
+        sample_id = sample_name_for_sample(dataset_kind, sample)
         pred_path = os.path.join(prediction_dir, f"{sample_id}.npy")
         pred_depth = infer_one_sample(
             model=model,
