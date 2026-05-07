@@ -12,6 +12,8 @@ def detect_dataset_kind(jsonl_path):
         return "clearpose"
     if "hammer" in path_lower:
         return "hammer"
+    if "transpose" in path_lower:
+        return "transpose"
     if "transcg" in path_lower:
         return "transcg"
     if "std_cat" in path_lower or "dreds" in path_lower:
@@ -33,6 +35,10 @@ def load_test_dataset(jsonl_path, raw_type="d435"):
         if raw_type.lower() != "d435":
             raise ValueError("TransCG dataset only supports raw-type=d435")
         return TransCGDataset(jsonl_path), dataset_kind
+    if dataset_kind == "transpose":
+        if raw_type.lower() != "l515":
+            raise ValueError("TRansPose dataset only supports raw-type=l515")
+        return TRansPoseDataset(jsonl_path), dataset_kind
     raise ValueError(f"Invalid dataset kind: {dataset_kind}")
 
 
@@ -51,11 +57,13 @@ def sample_name_for_dataset(dataset_kind, rgb_path):
         if len(parts) >= 3:
             return f"{parts[-3]}_{parts[-2]}"
         return path.stem
+    if dataset_kind == "transpose":
+        return path.stem
     raise ValueError(f"Invalid dataset kind: {dataset_kind}")
 
 
 def sample_name_for_sample(dataset_kind, sample):
-    if dataset_kind == "transcg" and len(sample) >= 4 and sample[3]:
+    if dataset_kind in ("transcg", "transpose") and len(sample) >= 4 and sample[3]:
         return str(sample[3])
     return sample_name_for_dataset(dataset_kind, sample[0])
 
@@ -234,6 +242,50 @@ class TransCGDataset(Dataset):
         return rgb, raw_depth, gt_depth, sample_name
 
 
+class TRansPoseDataset(Dataset):
+    def __init__(self, jsonl_path, default_depth_range=(0.1, 6.0)):
+        self.jsonl_path = jsonl_path
+        self.dataset_name = "transpose"
+        self.root = dirname(jsonl_path)
+        self.data = []
+
+        required_keys = ("seq_name", "rgb", "l515_depth", "depth")
+
+        with open(jsonl_path, "r", encoding="utf-8") as file:
+            for line_no, line in enumerate(file, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+
+                item = json.loads(line)
+                missing_keys = [key for key in required_keys if key not in item]
+                if missing_keys:
+                    raise KeyError(
+                        f"TRansPose jsonl row {line_no} is missing keys: {missing_keys}"
+                    )
+
+                self.data.append(item)
+
+        if not self.data:
+            raise ValueError(f"TRansPose jsonl is empty: {jsonl_path}")
+
+        self.depth_range = list(default_depth_range)
+        self.depth_scale = 1000.0
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        item = self.data[idx]
+
+        rgb = join(self.root, item["rgb"])
+        raw_depth = join(self.root, item["l515_depth"])
+        gt_depth = join(self.root, item["depth"])
+        sample_name = item["seq_name"]
+
+        return rgb, raw_depth, gt_depth, sample_name
+
+
 def load_dataset_for_eval(dataset_path, raw_type):
     dataset, _ = load_test_dataset(dataset_path, raw_type)
     return dataset
@@ -250,7 +302,7 @@ def limit_dataset_for_eval(dataset, max_samples):
     if isinstance(dataset, HAMMERDataset):
         dataset.data = dataset.data[:max_samples]
         return dataset
-    if isinstance(dataset, TransCGDataset):
+    if isinstance(dataset, (TransCGDataset, TRansPoseDataset)):
         dataset.data = dataset.data[:max_samples]
         return dataset
     raise TypeError(f"Unsupported dataset type: {type(dataset).__name__}")

@@ -48,7 +48,7 @@ def parse_hw(value: str) -> tuple[int, int]:
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="InfiniDepth_DepthSensor inference for HAMMER/ClearPose/DREDS/TransCG evaluation",
+        description="InfiniDepth_DepthSensor inference for HAMMER/ClearPose/DREDS/TransCG/TRansPose evaluation",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -61,7 +61,7 @@ def parse_arguments():
         "--dataset",
         type=str,
         required=True,
-        help="HAMMER, ClearPose, DREDS, or TransCG test JSONL path.",
+        help="HAMMER, ClearPose, DREDS, TransCG, or TRansPose test JSONL path.",
     )
     parser.add_argument(
         "--output",
@@ -86,7 +86,7 @@ def parse_arguments():
         type=str,
         required=True,
         choices=["d435", "l515", "tof"],
-        help="Raw depth field used as the depth sensor input. ClearPose only supports d435; DREDS ignores this selector.",
+        help="Raw depth field used as the depth sensor input. ClearPose only supports d435; TRansPose only supports l515; DREDS ignores this selector.",
     )
     parser.add_argument(
         "--model-type",
@@ -166,6 +166,8 @@ def validate_inputs(args) -> None:
     dataset_lower = args.dataset.lower()
     if "clearpose" in dataset_lower and args.raw_type != "d435":
         raise ValueError("ClearPose dataset only supports raw-type=d435")
+    if "transpose" in dataset_lower and args.raw_type != "l515":
+        raise ValueError("TRansPose dataset only supports raw-type=l515")
     if args.batch_size != 1:
         print("[Warning] This InfiniDepth adapter processes one sample at a time; --batch-size is recorded only.")
     if args.num_workers != 0:

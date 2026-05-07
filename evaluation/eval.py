@@ -39,7 +39,7 @@ def parse_arguments():
         help="Path to the model checkpoint file",
     )
     parser.add_argument(
-        "--dataset", type=str, required=True, help="HAMMER, ClearPose, DREDS, or TransCG JSONL path"
+        "--dataset", type=str, required=True, help="HAMMER, ClearPose, DREDS, TransCG, or TRansPose JSONL path"
     )
     parser.add_argument(
         "--output",
@@ -58,7 +58,7 @@ def parse_arguments():
         type=str,
         required=True,
         choices=["d435", "l515", "tof"],
-        help="Raw type. ClearPose only supports d435.",
+        help="Raw type. ClearPose only supports d435; TRansPose only supports l515.",
     )
     parser.add_argument(
         "--input-size", type=int, default=518, help="Input size for inference"
